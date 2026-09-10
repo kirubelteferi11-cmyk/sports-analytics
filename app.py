@@ -3,11 +3,11 @@ import requests
 import streamlit as st
 import nfl_data_py as nfl
 from nba_api.stats.endpoints import leaguegamefinder
+from sklearn.linear_model import LogisticRegression
 
 st.set_page_config(page_title="Custom Matchup Analytics", layout="wide")
 st.title("Custom Matchup & Performance Dashboard")
 
-# NFL Team Codes Mapping for Data Filtering
 NFL_TEAMS = {
     "Arizona Cardinals": {"code": "ARI", "city": "Glendale"},
     "Atlanta Falcons": {"code": "ATL", "city": "Atlanta"},
@@ -34,7 +34,7 @@ if league == "NFL":
     away_code = NFL_TEAMS[away_team_name]["code"]
     st.header(f"Matchup: {away_team_name} @ {home_team_name}")
 
-    # 1. Weather at Home Team Location
+    # 1. Weather
     st.subheader("1. Stadium Location & Live Weather")
     stadium_city = NFL_TEAMS[home_team_name]["city"]
     try:
@@ -49,7 +49,7 @@ if league == "NFL":
     except Exception as e:
         st.error(f"Could not load weather data: {e}")
 
-    # 2. Team Injury Reports
+    # 2. Injuries
     st.subheader("2. Active Injury Reports")
     try:
         injuries = nfl.import_injuries([2024])
@@ -58,7 +58,7 @@ if league == "NFL":
     except Exception as e:
         st.error(f"Could not load injury reports: {e}")
 
-    # 3. Past Head-to-Head Matchups
+    # 3. Head-to-Head
     st.subheader("3. Past Head-to-Head Meetings")
     try:
         schedules = nfl.import_schedules([2022, 2023, 2024])
@@ -70,7 +70,7 @@ if league == "NFL":
     except Exception as e:
         st.error(f"Could not load past matchups: {e}")
 
-    # 4. Recent Weekly Player Performance
+    # 4. Player Stats
     st.subheader("4. Recent Player Performance Data")
     try:
         weekly_stats = nfl.import_weekly_data([2024])
@@ -78,6 +78,31 @@ if league == "NFL":
         st.dataframe(team_players[['recent_team', 'player_name', 'position', 'passing_yards', 'rushing_yards', 'receiving_yards', 'fantasy_points']])
     except Exception as e:
         st.error(f"Could not load player stats: {e}")
+
+    # 5. AI Winner Prediction
+    st.subheader("5. AI Projected Winner")
+    try:
+        train_schedules = nfl.import_schedules([2022, 2023, 2024]).dropna(subset=['home_score', 'away_score'])
+        train_schedules['home_win'] = (train_schedules['home_score'] > train_schedules['away_score']).astype(int)
+        
+        X = train_schedules[['home_score', 'away_score']]
+        y = train_schedules['home_win']
+        
+        model = LogisticRegression()
+        model.fit(X, y)
+        
+        home_avg = train_schedules[train_schedules['home_team'] == home_code]['home_score'].mean() or 20.0
+        away_avg = train_schedules[train_schedules['away_team'] == away_code]['away_score'].mean() or 20.0
+        
+        win_prob = model.predict_proba([[home_avg, away_avg]])[0][1]
+        
+        if win_prob > 0.5:
+            st.success(f"**Predicted Winner:** {home_team_name} ({win_prob*100:.1f}% confidence)")
+        else:
+            st.success(f"**Predicted Winner:** {away_team_name} ({(1-win_prob)*100:.1f}% confidence)")
+
+    except Exception as e:
+        st.error(f"Could not calculate AI prediction: {e}")
 
 elif league == "NBA":
     st.header("NBA Matchup Intelligence")
