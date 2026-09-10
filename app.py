@@ -8,6 +8,7 @@ from sklearn.linear_model import LogisticRegression
 st.set_page_config(page_title="Custom Matchup Analytics", layout="wide")
 st.title("Custom Matchup & Performance Dashboard")
 
+# Expanded NFL Team Data
 NFL_TEAMS = {
     "Arizona Cardinals": {"code": "ARI", "city": "Glendale"},
     "Atlanta Falcons": {"code": "ATL", "city": "Atlanta"},
@@ -18,8 +19,19 @@ NFL_TEAMS = {
     "Dallas Cowboys": {"code": "DAL", "city": "Arlington"},
     "Green Bay Packers": {"code": "GB", "city": "Green Bay"},
     "Kansas City Chiefs": {"code": "KC", "city": "Kansas City"},
+    "Los Angeles Rams": {"code": "LA", "city": "Los Angeles"},
     "Philadelphia Eagles": {"code": "PHI", "city": "Philadelphia"},
     "San Francisco 49ers": {"code": "SF", "city": "Santa Clara"}
+}
+
+# International & Neutral Venues
+INTERNATIONAL_VENUES = {
+    "Standard Home Venue": None,
+    "Melbourne, Australia (MCG)": {"city": "Melbourne", "tz_offset": "+15 hrs"},
+    "London, UK (Wembley)": {"city": "London", "tz_offset": "+5 hrs"},
+    "London, UK (Tottenham)": {"city": "London", "tz_offset": "+5 hrs"},
+    "Munich, Germany (Allianz Arena)": {"city": "Munich", "tz_offset": "+6 hrs"},
+    "São Paulo, Brazil (Arena Corinthians)": {"city": "Sao Paulo", "tz_offset": "+1 hr"}
 }
 
 st.sidebar.header("Matchup Configuration")
@@ -27,18 +39,28 @@ league = st.sidebar.radio("League", ["NFL", "NBA"])
 
 if league == "NFL":
     col1, col2 = st.sidebar.columns(2)
-    home_team_name = col1.selectbox("Home Team", list(NFL_TEAMS.keys()), index=7)
-    away_team_name = col2.selectbox("Away Team", list(NFL_TEAMS.keys()), index=8)
+    home_team_name = col1.selectbox("Home Team", list(NFL_TEAMS.keys()), index=9) # Rams
+    away_team_name = col2.selectbox("Away Team", list(NFL_TEAMS.keys()), index=11) # 49ers
+    
+    venue_selection = st.sidebar.selectbox("Game Venue", list(INTERNATIONAL_VENUES.keys()))
     
     home_code = NFL_TEAMS[home_team_name]["code"]
     away_code = NFL_TEAMS[away_team_name]["code"]
-    st.header(f"Matchup: {away_team_name} @ {home_team_name}")
+    
+    # Check if game is international
+    is_international = venue_selection != "Standard Home Venue"
+    host_city = INTERNATIONAL_VENUES[venue_selection]["city"] if is_international else NFL_TEAMS[home_team_name]["city"]
+    
+    if is_international:
+        st.header(f"International Series: {away_team_name} vs. {home_team_name}")
+        st.info(f"**Neutral Venue:** {venue_selection} | **Time Shift:** {INTERNATIONAL_VENUES[venue_selection]['tz_offset']} relative to US Eastern Time")
+    else:
+        st.header(f"Matchup: {away_team_name} @ {home_team_name}")
 
-    # 1. Weather
-    st.subheader("1. Stadium Location & Live Weather")
-    stadium_city = NFL_TEAMS[home_team_name]["city"]
+    # 1. Location Weather Tracker
+    st.subheader(f"1. Game Location Weather ({host_city})")
     try:
-        geo = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={stadium_city}").json()
+        geo = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={host_city}").json()
         if geo.get("results"):
             lat, lon = geo["results"][0]["latitude"], geo["results"][0]["longitude"]
             weather = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true").json()["current_weather"]
@@ -49,23 +71,18 @@ if league == "NFL":
     except Exception as e:
         st.error(f"Could not load weather data: {e}")
 
-  # 2. Injuries
+    # 2. Active Injuries
     st.subheader("2. Active Injury Reports")
     try:
         injuries = nfl.import_injuries([2024])
         matchup_injuries = injuries[injuries['team'].isin([home_code, away_code])]
-        
-        # Identify name column dynamically
         name_col = 'full_name' if 'full_name' in matchup_injuries.columns else 'player_name'
-        
-        # Select available columns safely
         cols_to_show = [c for c in ['team', name_col, 'position', 'report_primary_injury', 'report_status'] if c in matchup_injuries.columns]
-        
         st.dataframe(matchup_injuries[cols_to_show])
     except Exception as e:
         st.error(f"Could not load injury reports: {e}")
 
-    # 3. Head-to-Head
+    # 3. Past Head-to-Head Meetings
     st.subheader("3. Past Head-to-Head Meetings")
     try:
         schedules = nfl.import_schedules([2022, 2023, 2024])
@@ -86,7 +103,7 @@ if league == "NFL":
     except Exception as e:
         st.error(f"Could not load player stats: {e}")
 
-    # 5. AI Winner Prediction
+    # 5. AI Winner Prediction with International Adjustment
     st.subheader("5. AI Projected Winner")
     try:
         train_schedules = nfl.import_schedules([2022, 2023, 2024]).dropna(subset=['home_score', 'away_score'])
@@ -101,7 +118,13 @@ if league == "NFL":
         home_avg = train_schedules[train_schedules['home_team'] == home_code]['home_score'].mean() or 20.0
         away_avg = train_schedules[train_schedules['away_team'] == away_code]['away_score'].mean() or 20.0
         
-        win_prob = model.predict_proba([[home_avg, away_avg]])[0][1]
+        # Adjust prediction for neutral venue (reduces home field advantage impact)
+        if is_international:
+            win_prob = 0.50 + ((home_avg - away_avg) * 0.015) # Neutralized weighting
+        else:
+            win_prob = model.predict_proba([[home_avg, away_avg]])[0][1]
+        
+        win_prob = max(0.05, min(0.95, win_prob))
         
         if win_prob > 0.5:
             st.success(f"**Predicted Winner:** {home_team_name} ({win_prob*100:.1f}% confidence)")
