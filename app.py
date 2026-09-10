@@ -97,10 +97,10 @@ if league == "NFL":
     except Exception as e:
         st.warning(f"Using standard rating estimates. Details: {e}")
 
- # 3. Team Madden Ratings Analysis
+# 3. Team Madden Ratings Analysis
     st.subheader("3. Team Madden Ratings Breakdown")
     
-    # Custom Madden OVR Dictionary (Fallback Dataset)
+    # Static Madden OVR Ratings Dictionary
     MADDEN_OVR = {
         "ARI": 78, "ATL": 82, "BAL": 89, "BUF": 88, 
         "CAR": 74, "CHI": 80, "DAL": 87, "GB": 84, 
