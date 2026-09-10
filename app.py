@@ -49,12 +49,19 @@ if league == "NFL":
     except Exception as e:
         st.error(f"Could not load weather data: {e}")
 
-    # 2. Injuries
+  # 2. Injuries
     st.subheader("2. Active Injury Reports")
     try:
         injuries = nfl.import_injuries([2024])
         matchup_injuries = injuries[injuries['team'].isin([home_code, away_code])]
-        st.dataframe(matchup_injuries[['team', 'player_name', 'position', 'report_primary_injury', 'report_status']])
+        
+        # Identify name column dynamically
+        name_col = 'full_name' if 'full_name' in matchup_injuries.columns else 'player_name'
+        
+        # Select available columns safely
+        cols_to_show = [c for c in ['team', name_col, 'position', 'report_primary_injury', 'report_status'] if c in matchup_injuries.columns]
+        
+        st.dataframe(matchup_injuries[cols_to_show])
     except Exception as e:
         st.error(f"Could not load injury reports: {e}")
 
