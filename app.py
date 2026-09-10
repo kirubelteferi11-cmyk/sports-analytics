@@ -8,7 +8,7 @@ from sklearn.linear_model import LogisticRegression
 st.set_page_config(page_title="Custom Matchup Analytics", layout="wide")
 st.title("Custom Matchup & Performance Dashboard")
 
-# NFL Team Codes Mapping
+# NFL Team Data
 NFL_TEAMS = {
     "Arizona Cardinals": {"code": "ARI", "city": "Glendale"},
     "Atlanta Falcons": {"code": "ATL", "city": "Atlanta"},
@@ -22,6 +22,13 @@ NFL_TEAMS = {
     "Los Angeles Rams": {"code": "LA", "city": "Los Angeles"},
     "Philadelphia Eagles": {"code": "PHI", "city": "Philadelphia"},
     "San Francisco 49ers": {"code": "SF", "city": "Santa Clara"}
+}
+
+# Static Madden OVR Team Ratings Dictionary
+MADDEN_OVR = {
+    "ARI": 78, "ATL": 82, "BAL": 89, "BUF": 88, 
+    "CAR": 74, "CHI": 80, "DAL": 87, "GB": 84, 
+    "KC": 92,  "LA": 85,  "PHI": 89, "SF": 90
 }
 
 INTERNATIONAL_VENUES = {
@@ -79,37 +86,57 @@ if league == "NFL":
     except Exception as e:
         st.error(f"Could not load injury reports: {e}")
 
-    # 3. Madden Ratings Analysis
+    # 3. Team Madden Ratings Breakdown
     st.subheader("3. Team Madden Ratings Breakdown")
-    home_madden_avg, away_madden_avg = 80.0, 80.0  # Fallback averages
-    try:
-        madden_df = nfl.import_madden_ratings([2024])
-        matchup_madden = madden_df[madden_df['team'].isin([home_code, away_code])]
-        
-        home_madden_avg = matchup_madden[matchup_madden['team'] == home_code]['overall_rating'].mean() or 80.0
-        away_madden_avg = matchup_madden[matchup_madden['team'] == away_code]['overall_rating'].mean() or 80.0
-        
-        m1, m2 = st.columns(2)
-        m1.metric(f"{home_team_name} Madden Rating", f"{home_madden_avg:.1f} OVR")
-        m2.metric(f"{away_team_name} Madden Rating", f"{away_madden_avg:.1f} OVR")
-        
-        st.dataframe(matchup_madden[['team', 'full_name', 'position', 'overall_rating']].sort_values(by='overall_rating', ascending=False).head(10))
-    except Exception as e:
-        st.warning(f"Using standard rating estimates. Details: {e}")
-
-# 3. Team Madden Ratings Analysis
-    st.subheader("3. Team Madden Ratings Breakdown")
-    
-    # Static Madden OVR Ratings Dictionary
-    MADDEN_OVR = {
-        "ARI": 78, "ATL": 82, "BAL": 89, "BUF": 88, 
-        "CAR": 74, "CHI": 80, "DAL": 87, "GB": 84, 
-        "KC": 92,  "LA": 85,  "PHI": 89, "SF": 90
-    }
-    
-    home_madden_avg = MADDEN_OVR.get(home_code, 80.0)
-    away_madden_avg = MADDEN_OVR.get(away_code, 80.0)
+    home_madden_avg = MADDEN_OVR.get(home_code, 80)
+    away_madden_avg = MADDEN_OVR.get(away_code, 80)
     
     m1, m2 = st.columns(2)
     m1.metric(f"{home_team_name} Madden Rating", f"{home_madden_avg:.1f} OVR")
     m2.metric(f"{away_team_name} Madden Rating", f"{away_madden_avg:.1f} OVR")
+
+    # 4. AI Winner Prediction
+    st.subheader("4. AI Projected Winner")
+    try:
+        train_schedules = nfl.import_schedules([2022, 2023, 2024, 2025, 2026]).dropna(subset=['home_score', 'away_score'])
+        train_schedules['home_win'] = (train_schedules['home_score'] > train_schedules['away_score']).astype(int)
+        
+        X = train_schedules[['home_score', 'away_score']]
+        y = train_schedules['home_win']
+        
+        model = LogisticRegression()
+        model.fit(X, y)
+        
+        home_avg = train_schedules[train_schedules['home_team'] == home_code]['home_score'].mean() or 20.0
+        away_avg = train_schedules[train_schedules['away_team'] == away_code]['away_score'].mean() or 20.0
+        
+        base_win_prob = 0.50 + ((home_avg - away_avg) * 0.015) if is_international else model.predict_proba([[home_avg, away_avg]])[0][1]
+        
+        # Incorporate Madden ratings factor
+        madden_diff = home_madden_avg - away_madden_avg
+        final_win_prob = base_win_prob + (madden_diff * 0.02)
+        final_win_prob = max(0.05, min(0.95, final_win_prob))
+        
+        predicted_winner = home_team_name if final_win_prob > 0.5 else away_team_name
+        confidence = final_win_prob * 100 if final_win_prob > 0.5 else (1 - final_win_prob) * 100
+        
+        st.success(f"**Predicted Winner:** {predicted_winner} ({confidence:.1f}% confidence)")
+        
+        st.markdown(f"""
+        **AI Decision Analysis:**
+        * **Training Set:** Model trained on game data from **2022 through 2026**.
+        * **Madden Advantage:** {home_team_name if madden_diff > 0 else away_team_name} holds a **+{abs(madden_diff):.1f} OVR** differential.
+        * **Scoring Metrics:** Historical scoring averages ({home_avg:.1f} vs {away_avg:.1f} PPG).
+        * **Venue Impact:** Game location set to **{host_city}** ({'Neutral Field' if is_international else 'Home Stadium Advantage'}).
+        """)
+
+    except Exception as e:
+        st.error(f"Could not calculate AI prediction: {e}")
+
+elif league == "NBA":
+    st.header("NBA Matchup Intelligence")
+    try:
+        games = leaguegamefinder.LeagueGameFinder(league_id_nullable='00').get_data_frames()[0]
+        st.dataframe(games[['GAME_DATE', 'TEAM_NAME', 'MATCHUP', 'WL', 'PTS']].head(20))
+    except Exception as e:
+        st.error(f"Could not load NBA data: {e}")
