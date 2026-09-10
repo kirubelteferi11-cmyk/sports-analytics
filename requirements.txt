@@ -3,3 +3,9 @@ pandas
 nfl_data_py
 nba_api
 requests
+streamlit
+pandas
+nfl_data_py
+nba_api
+requests
+scikit-learn
