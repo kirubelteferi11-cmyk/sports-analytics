@@ -8,7 +8,7 @@ from sklearn.linear_model import LogisticRegression
 st.set_page_config(page_title="Custom Matchup Analytics", layout="wide")
 st.title("Custom Matchup & Performance Dashboard")
 
-# Expanded NFL Team Data
+# NFL Team Codes Mapping
 NFL_TEAMS = {
     "Arizona Cardinals": {"code": "ARI", "city": "Glendale"},
     "Atlanta Falcons": {"code": "ATL", "city": "Atlanta"},
@@ -24,12 +24,10 @@ NFL_TEAMS = {
     "San Francisco 49ers": {"code": "SF", "city": "Santa Clara"}
 }
 
-# International & Neutral Venues
 INTERNATIONAL_VENUES = {
     "Standard Home Venue": None,
     "Melbourne, Australia (MCG)": {"city": "Melbourne", "tz_offset": "+15 hrs"},
     "London, UK (Wembley)": {"city": "London", "tz_offset": "+5 hrs"},
-    "London, UK (Tottenham)": {"city": "London", "tz_offset": "+5 hrs"},
     "Munich, Germany (Allianz Arena)": {"city": "Munich", "tz_offset": "+6 hrs"},
     "São Paulo, Brazil (Arena Corinthians)": {"city": "Sao Paulo", "tz_offset": "+1 hr"}
 }
@@ -39,15 +37,14 @@ league = st.sidebar.radio("League", ["NFL", "NBA"])
 
 if league == "NFL":
     col1, col2 = st.sidebar.columns(2)
-    home_team_name = col1.selectbox("Home Team", list(NFL_TEAMS.keys()), index=9) # Rams
-    away_team_name = col2.selectbox("Away Team", list(NFL_TEAMS.keys()), index=11) # 49ers
+    home_team_name = col1.selectbox("Home Team", list(NFL_TEAMS.keys()), index=9)
+    away_team_name = col2.selectbox("Away Team", list(NFL_TEAMS.keys()), index=11)
     
     venue_selection = st.sidebar.selectbox("Game Venue", list(INTERNATIONAL_VENUES.keys()))
     
     home_code = NFL_TEAMS[home_team_name]["code"]
     away_code = NFL_TEAMS[away_team_name]["code"]
     
-    # Check if game is international
     is_international = venue_selection != "Standard Home Venue"
     host_city = INTERNATIONAL_VENUES[venue_selection]["city"] if is_international else NFL_TEAMS[home_team_name]["city"]
     
@@ -82,41 +79,26 @@ if league == "NFL":
     except Exception as e:
         st.error(f"Could not load injury reports: {e}")
 
-    # 3. Past Head-to-Head Meetings
-    st.subheader("3. Past Head-to-Head Meetings")
+    # 3. Madden Ratings Analysis
+    st.subheader("3. Team Madden Ratings Breakdown")
+    home_madden_avg, away_madden_avg = 80.0, 80.0  # Fallback averages
     try:
-        schedules = nfl.import_schedules([2022, 2023, 2024])
-        h2h = schedules[
-            ((schedules['home_team'] == home_code) & (schedules['away_team'] == away_code)) |
-            ((schedules['home_team'] == away_code) & (schedules['away_team'] == home_code))
-        ]
-        st.dataframe(h2h[['season', 'week', 'home_team', 'away_team', 'home_score', 'away_score', 'roof']])
+        madden_df = nfl.import_madden_ratings([2024])
+        matchup_madden = madden_df[madden_df['team'].isin([home_code, away_code])]
+        
+        home_madden_avg = matchup_madden[matchup_madden['team'] == home_code]['overall_rating'].mean() or 80.0
+        away_madden_avg = matchup_madden[matchup_madden['team'] == away_code]['overall_rating'].mean() or 80.0
+        
+        m1, m2 = st.columns(2)
+        m1.metric(f"{home_team_name} Madden Rating", f"{home_madden_avg:.1f} OVR")
+        m2.metric(f"{away_team_name} Madden Rating", f"{away_madden_avg:.1f} OVR")
+        
+        st.dataframe(matchup_madden[['team', 'full_name', 'position', 'overall_rating']].sort_values(by='overall_rating', ascending=False).head(10))
     except Exception as e:
-        st.error(f"Could not load past matchups: {e}")
+        st.warning(f"Using standard rating estimates. Details: {e}")
 
-   # 4. Active Roster & Notable Playmakers Tracker
-    st.subheader("4. Team Roster & Key Playmakers")
-    try:
-        # Load seasonal roster data
-        rosters = nfl.import_seasonal_rosters([2024])
-        
-        # Filter for selected matchup teams
-        matchup_roster = rosters[rosters['team'].isin([home_code, away_code])]
-        
-        # Identify key positions (QBs, RBs, WRs, TEs)
-        key_positions = ['QB', 'RB', 'WR', 'TE']
-        star_players = matchup_roster[matchup_roster['position'].isin(key_positions)]
-        
-        # Select relevant columns dynamically
-        name_col = 'player_name' if 'player_name' in star_players.columns else 'full_name'
-        cols = [c for c in ['team', name_col, 'position', 'jersey_number', 'years_exp'] if c in star_players.columns]
-        
-        st.dataframe(star_players[cols].head(15))
-    except Exception as e:
-        st.error(f"Could not load roster data: {e}")
-
-    # 5. AI Winner Prediction with Roster & Venue Analysis
-    st.subheader("5. AI Conclusion & Win Projection")
+    # 4. AI Winner Prediction with Madden Ratings Factor
+    st.subheader("4. AI Projected Winner")
     try:
         train_schedules = nfl.import_schedules([2022, 2023, 2024]).dropna(subset=['home_score', 'away_score'])
         train_schedules['home_win'] = (train_schedules['home_score'] > train_schedules['away_score']).astype(int)
@@ -130,26 +112,33 @@ if league == "NFL":
         home_avg = train_schedules[train_schedules['home_team'] == home_code]['home_score'].mean() or 20.0
         away_avg = train_schedules[train_schedules['away_team'] == away_code]['away_score'].mean() or 20.0
         
-        # Base Model Calculation
-        if is_international:
-            win_prob = 0.50 + ((home_avg - away_avg) * 0.015)
-        else:
-            win_prob = model.predict_proba([[home_avg, away_avg]])[0][1]
+        # Base win probability from scoring trends
+        base_win_prob = 0.50 + ((home_avg - away_avg) * 0.015) if is_international else model.predict_proba([[home_avg, away_avg]])[0][1]
         
-        # Adjust confidence bound
-        win_prob = max(0.05, min(0.95, win_prob))
-        predicted_winner = home_team_name if win_prob > 0.5 else away_team_name
-        confidence = win_prob * 100 if win_prob > 0.5 else (1 - win_prob) * 100
+        # Factor in Madden OVR Difference (+2% probability per +1 OVR advantage)
+        madden_diff = home_madden_avg - away_madden_avg
+        final_win_prob = base_win_prob + (madden_diff * 0.02)
+        final_win_prob = max(0.05, min(0.95, final_win_prob))
         
-        # AI Written Conclusion Display
-        st.success(f"**Projected Winner:** {predicted_winner} ({confidence:.1f}% confidence)")
+        predicted_winner = home_team_name if final_win_prob > 0.5 else away_team_name
+        confidence = final_win_prob * 100 if final_win_prob > 0.5 else (1 - final_win_prob) * 100
+        
+        st.success(f"**Predicted Winner:** {predicted_winner} ({confidence:.1f}% confidence)")
         
         st.markdown(f"""
-        **AI Matchup Analysis & Conclusion:**
-        * **Roster Depth:** Analyzed active skill-position rosters (QBs, RBs, WRs) for **{home_team_name}** and **{away_team_name}**.
-        * **Location Factor:** Matchup location set to **{host_city}** ({'Neutral International Venue' if is_international else 'Home Stadium Advantage'}).
-        * **Scoring Advantage:** Model favors **{predicted_winner}** based on multi-year offensive efficiency and baseline scoring outputs.
+        **AI Decision Analysis:**
+        * **Madden Talent Advantage:** {home_team_name if madden_diff > 0 else away_team_name} holds a **+{abs(madden_diff):.1f} OVR** edge in team ratings.
+        * **Scoring Metrics:** Base offensive output factors in historical scoring averages ({home_avg:.1f} vs {away_avg:.1f} PPG).
+        * **Venue Impact:** Game location is set to **{host_city}** ({'Neutral Field' if is_international else 'Home Stadium Advantage'}).
         """)
 
     except Exception as e:
         st.error(f"Could not calculate AI prediction: {e}")
+
+elif league == "NBA":
+    st.header("NBA Matchup Intelligence")
+    try:
+        games = leaguegamefinder.LeagueGameFinder(league_id_nullable='00').get_data_frames()[0]
+        st.dataframe(games[['GAME_DATE', 'TEAM_NAME', 'MATCHUP', 'WL', 'PTS']].head(20))
+    except Exception as e:
+        st.error(f"Could not load NBA data: {e}")
