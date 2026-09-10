@@ -3,3 +3,38 @@ pandas
 nfl_data_py
 nba_api
 requests
+from sklearn.linear_model import LogisticRegression
+import numpy as np
+
+st.subheader("5. AI Projected Winner")
+
+try:
+    # 1. Fetch past schedule data to train the model
+    train_schedules = nfl.import_schedules([2022, 2023, 2024]).dropna(subset=['home_score', 'away_score'])
+    
+    # 2. Target: 1 if Home Team won, 0 if Away Team won
+    train_schedules['home_win'] = (train_schedules['home_score'] > train_schedules['away_score']).astype(int)
+    
+    # 3. Simple feature set: Home/Away historical score averages
+    X = train_schedules[['home_score', 'away_score']]
+    y = train_schedules['home_win']
+    
+    # 4. Train model
+    model = LogisticRegression()
+    model.fit(X, y)
+    
+    # 5. Predict outcome probability for selected matchup
+    # Calculates overall scoring average for selected teams
+    home_avg = train_schedules[train_schedules['home_team'] == home_code]['home_score'].mean() or 20.0
+    away_avg = train_schedules[train_schedules['away_team'] == away_code]['away_score'].mean() or 20.0
+    
+    win_prob = model.predict_proba([[home_avg, away_avg]])[0][1] # Probability Home wins
+    
+    # Display the result
+    if win_prob > 0.5:
+        st.success(f"**Predicted Winner:** {home_team_name} ({win_prob*100:.1f}% confidence)")
+    else:
+        st.success(f"**Predicted Winner:** {away_team_name} ({(1-win_prob)*100:.1f}% confidence)")
+
+except Exception as e:
+    st.error(f"Could not calculate AI prediction: {e}")
