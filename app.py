@@ -97,15 +97,19 @@ if league == "NFL":
     except Exception as e:
         st.warning(f"Using standard rating estimates. Details: {e}")
 
-  # 3. Head-to-Head Data (Including 2025-2026)
-    st.subheader("3. Past Head-to-Head Meetings")
-    try:
-        # Pulled years expanded to include 2025 and 2026
-        schedules = nfl.import_schedules([2022, 2023, 2024, 2025, 2026])
-        h2h = schedules[
-            ((schedules['home_team'] == home_code) & (schedules['away_team'] == away_code)) |
-            ((schedules['home_team'] == away_code) & (schedules['away_team'] == home_code))
-        ]
-        st.dataframe(h2h[['season', 'week', 'home_team', 'away_team', 'home_score', 'away_score', 'roof']])
-    except Exception as e:
-        st.error(f"Could not load past matchups: {e}")
+ # 3. Team Madden Ratings Analysis
+    st.subheader("3. Team Madden Ratings Breakdown")
+    
+    # Custom Madden OVR Dictionary (Fallback Dataset)
+    MADDEN_OVR = {
+        "ARI": 78, "ATL": 82, "BAL": 89, "BUF": 88, 
+        "CAR": 74, "CHI": 80, "DAL": 87, "GB": 84, 
+        "KC": 92,  "LA": 85,  "PHI": 89, "SF": 90
+    }
+    
+    home_madden_avg = MADDEN_OVR.get(home_code, 80.0)
+    away_madden_avg = MADDEN_OVR.get(away_code, 80.0)
+    
+    m1, m2 = st.columns(2)
+    m1.metric(f"{home_team_name} Madden Rating", f"{home_madden_avg:.1f} OVR")
+    m2.metric(f"{away_team_name} Madden Rating", f"{away_madden_avg:.1f} OVR")
