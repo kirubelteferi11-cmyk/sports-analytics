@@ -8,7 +8,7 @@ from sklearn.linear_model import LogisticRegression
 st.set_page_config(page_title="Sports Analytics Machine Learning Engine", layout="wide")
 st.title("Comprehensive Sports Analytics & Prediction Engine")
 
-# 1. NFL Teams & Venue Mapping
+# Complete 32 NFL Team Mapping
 NFL_TEAMS = {
     "Arizona Cardinals": {"code": "ARI", "city": "Glendale"},
     "Atlanta Falcons": {"code": "ATL", "city": "Atlanta"},
@@ -16,19 +16,42 @@ NFL_TEAMS = {
     "Buffalo Bills": {"code": "BUF", "city": "Orchard Park"},
     "Carolina Panthers": {"code": "CAR", "city": "Charlotte"},
     "Chicago Bears": {"code": "CHI", "city": "Chicago"},
+    "Cincinnati Bengals": {"code": "CIN", "city": "Cincinnati"},
+    "Cleveland Browns": {"code": "CLE", "city": "Cleveland"},
     "Dallas Cowboys": {"code": "DAL", "city": "Arlington"},
+    "Denver Broncos": {"code": "DEN", "city": "Denver"},
+    "Detroit Lions": {"code": "DET", "city": "Detroit"},
     "Green Bay Packers": {"code": "GB", "city": "Green Bay"},
+    "Houston Texans": {"code": "HOU", "city": "Houston"},
+    "Indianapolis Colts": {"code": "IND", "city": "Indianapolis"},
+    "Jacksonville Jaguars": {"code": "JAX", "city": "Jacksonville"},
     "Kansas City Chiefs": {"code": "KC", "city": "Kansas City"},
-    "Los Angeles Rams": {"code": "LA", "city": "Los Angeles"},
+    "Las Vegas Raiders": {"code": "LV", "city": "Las Vegas"},
+    "Los Angeles Chargers": {"code": "LAC", "city": "Inglewood"},
+    "Los Angeles Rams": {"code": "LA", "city": "Inglewood"},
+    "Miami Dolphins": {"code": "MIA", "city": "Miami Gardens"},
+    "Minnesota Vikings": {"code": "MIN", "city": "Minneapolis"},
+    "New England Patriots": {"code": "NE", "city": "Foxborough"},
+    "New Orleans Saints": {"code": "NO", "city": "New Orleans"},
+    "New York Giants": {"code": "NYG", "city": "East Rutherford"},
+    "New York Jets": {"code": "NYJ", "city": "East Rutherford"},
     "Philadelphia Eagles": {"code": "PHI", "city": "Philadelphia"},
-    "San Francisco 49ers": {"code": "SF", "city": "Santa Clara"}
+    "Pittsburgh Steelers": {"code": "PIT", "city": "Pittsburgh"},
+    "San Francisco 49ers": {"code": "SF", "city": "Santa Clara"},
+    "Seattle Seahawks": {"code": "SEA", "city": "Seattle"},
+    "Tampa Bay Buccaneers": {"code": "TB", "city": "Tampa"},
+    "Tennessee Titans": {"code": "TEN", "city": "Nashville"},
+    "Washington Commanders": {"code": "WAS", "city": "Landover"}
 }
 
-# Baseline Madden Overall Ratings Dataset
+# Baseline Madden Overall Ratings Dataset (32 Teams)
 MADDEN_OVR = {
-    "ARI": 78, "ATL": 82, "BAL": 89, "BUF": 88, 
-    "CAR": 74, "CHI": 80, "DAL": 87, "GB": 84, 
-    "KC": 92,  "LA": 85,  "PHI": 89, "SF": 90
+    "ARI": 78, "ATL": 82, "BAL": 89, "BUF": 88, "CAR": 74, "CHI": 80,
+    "CIN": 85, "CLE": 83, "DAL": 87, "DEN": 77, "DET": 86, "GB": 84,
+    "HOU": 83, "IND": 81, "JAX": 80, "KC": 92,  "LV": 81,  "LAC": 82,
+    "LA": 85,  "MIA": 86, "MIN": 81, "NE": 76,  "NO": 79,  "NYG": 78,
+    "NYJ": 84, "PHI": 89, "PIT": 82, "SF": 90,  "SEA": 81, "TB": 81,
+    "TEN": 77, "WAS": 79
 }
 
 INTERNATIONAL_VENUES = {
@@ -44,8 +67,8 @@ league = st.sidebar.radio("League", ["NFL", "NBA"])
 
 if league == "NFL":
     col1, col2 = st.sidebar.columns(2)
-    home_team_name = col1.selectbox("Home Team", list(NFL_TEAMS.keys()), index=9)
-    away_team_name = col2.selectbox("Away Team", list(NFL_TEAMS.keys()), index=11)
+    home_team_name = col1.selectbox("Home Team", list(NFL_TEAMS.keys()), index=15) # Chiefs
+    away_team_name = col2.selectbox("Away Team", list(NFL_TEAMS.keys()), index=27) # 49ers
     venue_selection = st.sidebar.selectbox("Game Venue", list(INTERNATIONAL_VENUES.keys()))
     
     home_code = NFL_TEAMS[home_team_name]["code"]
@@ -60,7 +83,7 @@ if league == "NFL":
     else:
         st.header(f"Matchup: {away_team_name} @ {home_team_name}")
 
-    # Section 1: Environmental & Live Weather Factors
+    # Section 1: Weather Factor
     st.subheader(f"1. Stadium Location & Weather Impact ({host_city})")
     try:
         geo = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={host_city}").json()
@@ -85,7 +108,7 @@ if league == "NFL":
     except Exception as e:
         st.error(f"Could not load injury reports: {e}")
 
-    # Section 3: Head-to-Head History (2022–2026)
+    # Section 3: Head-to-Head Meetings (2022–2026)
     st.subheader("3. Historical Matchups (2022–2026)")
     try:
         schedules = nfl.import_schedules([2022, 2023, 2024, 2025, 2026])
@@ -121,10 +144,8 @@ if league == "NFL":
         home_avg = train_schedules[train_schedules['home_team'] == home_code]['home_score'].mean() or 20.0
         away_avg = train_schedules[train_schedules['away_team'] == away_code]['away_score'].mean() or 20.0
         
-        # 1. Base probability from historical scoring trends
         base_win_prob = 0.50 + ((home_avg - away_avg) * 0.015) if is_international else model.predict_proba([[home_avg, away_avg]])[0][1]
         
-        # 2. Adjust for Madden Rating Difference (+2% shift per 1 OVR point advantage)
         madden_diff = home_madden - away_madden
         final_win_prob = base_win_prob + (madden_diff * 0.02)
         final_win_prob = max(0.05, min(0.95, final_win_prob))
@@ -136,9 +157,9 @@ if league == "NFL":
         
         st.markdown(f"""
         **AI Conclusion Factors:**
-        * **Madden Talent Impact:** {home_team_name if madden_diff > 0 else away_team_name} holds a **+{abs(madden_diff):.1f} OVR** talent rating advantage.
-        * **Historical Performance:** Scoring metrics pull from **2022–2026** game history ({home_avg:.1f} vs {away_avg:.1f} average PPG).
-        * **Venue Neutralization:** Location is **{host_city}** ({'Neutral International Venue' if is_international else 'Standard Home Field Advantage'}).
+        * **Madden Talent Impact:** {home_team_name if madden_diff > 0 else away_team_name} holds a **+{abs(madden_diff):.1f} OVR** talent advantage.
+        * **Historical Metrics:** Scoring metrics derive from **2022–2026** match results ({home_avg:.1f} vs {away_avg:.1f} PPG).
+        * **Venue Influence:** Location set to **{host_city}** ({'Neutral International Venue' if is_international else 'Standard Home Stadium Advantage'}).
         """)
 
     except Exception as e:
