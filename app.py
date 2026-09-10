@@ -97,48 +97,15 @@ if league == "NFL":
     except Exception as e:
         st.warning(f"Using standard rating estimates. Details: {e}")
 
-    # 4. AI Winner Prediction with Madden Ratings Factor
-    st.subheader("4. AI Projected Winner")
+  # 3. Head-to-Head Data (Including 2025-2026)
+    st.subheader("3. Past Head-to-Head Meetings")
     try:
-        train_schedules = nfl.import_schedules([2022, 2023, 2024]).dropna(subset=['home_score', 'away_score'])
-        train_schedules['home_win'] = (train_schedules['home_score'] > train_schedules['away_score']).astype(int)
-        
-        X = train_schedules[['home_score', 'away_score']]
-        y = train_schedules['home_win']
-        
-        model = LogisticRegression()
-        model.fit(X, y)
-        
-        home_avg = train_schedules[train_schedules['home_team'] == home_code]['home_score'].mean() or 20.0
-        away_avg = train_schedules[train_schedules['away_team'] == away_code]['away_score'].mean() or 20.0
-        
-        # Base win probability from scoring trends
-        base_win_prob = 0.50 + ((home_avg - away_avg) * 0.015) if is_international else model.predict_proba([[home_avg, away_avg]])[0][1]
-        
-        # Factor in Madden OVR Difference (+2% probability per +1 OVR advantage)
-        madden_diff = home_madden_avg - away_madden_avg
-        final_win_prob = base_win_prob + (madden_diff * 0.02)
-        final_win_prob = max(0.05, min(0.95, final_win_prob))
-        
-        predicted_winner = home_team_name if final_win_prob > 0.5 else away_team_name
-        confidence = final_win_prob * 100 if final_win_prob > 0.5 else (1 - final_win_prob) * 100
-        
-        st.success(f"**Predicted Winner:** {predicted_winner} ({confidence:.1f}% confidence)")
-        
-        st.markdown(f"""
-        **AI Decision Analysis:**
-        * **Madden Talent Advantage:** {home_team_name if madden_diff > 0 else away_team_name} holds a **+{abs(madden_diff):.1f} OVR** edge in team ratings.
-        * **Scoring Metrics:** Base offensive output factors in historical scoring averages ({home_avg:.1f} vs {away_avg:.1f} PPG).
-        * **Venue Impact:** Game location is set to **{host_city}** ({'Neutral Field' if is_international else 'Home Stadium Advantage'}).
-        """)
-
+        # Pulled years expanded to include 2025 and 2026
+        schedules = nfl.import_schedules([2022, 2023, 2024, 2025, 2026])
+        h2h = schedules[
+            ((schedules['home_team'] == home_code) & (schedules['away_team'] == away_code)) |
+            ((schedules['home_team'] == away_code) & (schedules['away_team'] == home_code))
+        ]
+        st.dataframe(h2h[['season', 'week', 'home_team', 'away_team', 'home_score', 'away_score', 'roof']])
     except Exception as e:
-        st.error(f"Could not calculate AI prediction: {e}")
-
-elif league == "NBA":
-    st.header("NBA Matchup Intelligence")
-    try:
-        games = leaguegamefinder.LeagueGameFinder(league_id_nullable='00').get_data_frames()[0]
-        st.dataframe(games[['GAME_DATE', 'TEAM_NAME', 'MATCHUP', 'WL', 'PTS']].head(20))
-    except Exception as e:
-        st.error(f"Could not load NBA data: {e}")
+        st.error(f"Could not load past matchups: {e}")
